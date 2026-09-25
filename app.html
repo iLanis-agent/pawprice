@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PawPrice - what the pet really costs</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#141210; color:#f0ece6; min-height:100vh; }
+  .wrap { max-width:860px; margin:0 auto; padding:28px 20px 80px; }
+  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; }
+  header h1 { font-size:22px; } header h1 span { color:#f2917a; }
+  header a { color:#9a9184; text-decoration:none; font-size:14px; }
+  .card { background:#1d1a16; border:1px solid #453a30; border-radius:12px; padding:18px; margin-bottom:18px; }
+  label { font-size:12px; color:#9a9184; display:block; margin-bottom:4px; }
+  input, select { background:#141210; border:1px solid #57483a; border-radius:8px; color:#f0ece6; padding:9px 10px; font-size:14px; width:100%; }
+  button { background:#f2917a; border:none; color:#2a1209; font-weight:700; padding:11px 22px; border-radius:9px; font-size:14px; cursor:pointer; }
+  .row4 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px; margin-bottom:12px; }
+  h3 { font-size:14px; color:#c4baac; margin-bottom:10px; }
+  .verdict { background:#241a14; border:1px solid #573f2e; border-radius:10px; padding:14px 16px; margin-bottom:14px; font-size:15px; line-height:1.6; }
+  .verdict b { color:#f2917a; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .stat { background:#141210; border:1px solid #453a30; border-radius:10px; padding:12px; }
+  .stat .v { font-size:20px; font-weight:700; color:#fff; }
+  .stat .k { font-size:11px; color:#9a9184; margin-top:2px; line-height:1.4; }
+  .err { color:#ff8a8a; font-size:13px; margin-top:8px; }
+  .note { color:#6e675c; font-size:12px; margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Paw<span>Price</span></h1><a href="index.html">home</a></header>
+
+  <div class="card">
+    <h3>The animal</h3>
+    <div class="row4">
+      <div><label>Species</label><select id="species"><option value="dog">dog</option><option value="cat">cat</option></select></div>
+      <div><label>Size (dogs)</label><select id="size"><option value="small">small</option><option value="medium" selected>medium</option><option value="large">large</option></select></div>
+      <div><label>Age at adoption</label><select id="age"><option value="puppy">puppy/kitten</option><option value="adult" selected>adult</option><option value="senior">senior</option></select></div>
+      <div><label>Adoption fee ($)</label><input id="fee" type="number" value="200"></div>
+    </div>
+    <h3>Upfront ($)</h3>
+    <div class="row4">
+      <div><label>Medical (vax, chip, neuter)</label><input id="med" type="number" value="450"></div>
+      <div><label>Gear (bed, crate, bowls)</label><input id="gear" type="number" value="300"></div>
+      <div><label>Training course</label><input id="train" type="number" value="0"></div>
+      <div></div>
+    </div>
+    <h3>Ongoing</h3>
+    <div class="row4">
+      <div><label>Food ($/mo)</label><input id="food" type="number" value="60"></div>
+      <div><label>Litter ($/mo, cats)</label><input id="litter" type="number" value="0"></div>
+      <div><label>Insurance ($/mo)</label><input id="ins" type="number" value="0"></div>
+      <div><label>Grooming ($/mo)</label><input id="groom" type="number" value="0"></div>
+    </div>
+    <div class="row4">
+      <div><label>Vet ($/yr)</label><input id="vet" type="number" value="400"></div>
+      <div></div><div></div>
+      <div><label>&nbsp;</label><button id="go">Price it</button></div>
+    </div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div id="out"></div>
+</div>
+<script src="engine.js"></script>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  function usd(x){ return '$' + Math.round(x).toLocaleString('en-US'); }
+
+  function preset(){
+    const sp = $('species').value, sz = $('size').value, age = $('age').value;
+    const p = sp === 'dog' ? PawPriceEngine.PRESETS.dog[sz] : PawPriceEngine.PRESETS.cat.any;
+    $('med').value = p.upfrontMedical;
+    $('gear').value = p.gear;
+    $('vet').value = p.vetPerYear;
+    $('food').value = p.foodPerMonth;
+    $('litter').value = sp === 'cat' ? 20 : 0;
+    $('train').value = (age === 'puppy' && sp === 'dog') ? 300 : 0;
+    $('size').disabled = sp !== 'dog';
+  }
+
+  function calc(skipPreset){
+    if (!skipPreset) preset();
+    $('err').textContent = '';
+    const st = { species: $('species').value, size: $('size').value, age: $('age').value, fee: $('fee').value, med: $('med').value, gear: $('gear').value, train: $('train').value, food: $('food').value, litter: $('litter').value, ins: $('ins').value, groom: $('groom').value, vet: $('vet').value };
+    try { localStorage.setItem('pawprice', JSON.stringify(st)); } catch(e) {}
+    let r;
+    try {
+      r = PawPriceEngine.price({ species: st.species, size: st.size, ageGroup: st.age, adoptionFee: st.fee, upfrontMedical: st.med, gear: st.gear, training: st.train, foodPerMonth: st.food, litterPerMonth: st.litter, insurancePerMonth: st.ins, groomPerMonth: st.groom, vetPerYear: st.vet });
+    } catch(e) { $('err').textContent = e.message; $('out').innerHTML = ''; return; }
+
+    const name = st.species === 'dog' ? st.size + ' dog' : 'cat';
+    const v = 'That ' + name + ' costs <b>' + usd(r.yearOne) + '</b> in year one and about <b>' + usd(r.honestMonthly) + '/month</b> honestly averaged - <b>'
+      + usd(r.lifetimeTotal) + '</b> over ' + r.remainingYears + ' years together, or <b>$' + r.costPerDay + '/day</b> of companionship.';
+
+    $('out').innerHTML = '<div class="verdict">' + v + '</div><div class="card"><div class="stats">'
+      + '<div class="stat"><div class="v">' + usd(r.upfrontTotal) + '</div><div class="k">upfront (fee, medical, gear, training)</div></div>'
+      + '<div class="stat"><div class="v">' + usd(r.yearOne) + '</div><div class="k">year one, all-in</div></div>'
+      + '<div class="stat"><div class="v">' + usd(r.annualOngoing) + '</div><div class="k">each year after</div></div>'
+      + '<div class="stat"><div class="v">' + usd(r.honestMonthly) + '</div><div class="k">honest monthly average</div></div>'
+      + '<div class="stat"><div class="v">' + usd(r.lifetimeTotal) + '</div><div class="k">lifetime (' + r.remainingYears + ' yrs, ' + r.lifespan + '-yr typical lifespan)</div></div>'
+      + '<div class="stat"><div class="v">$' + r.costPerDay + '</div><div class="k">per day of companionship</div></div>'
+      + '</div><div class="note">Defaults are mid-range estimates for the species and size; adjust every field to your city and your vet. Seniors are priced over their remaining years.</div></div>';
+  }
+
+  ['species','size','age'].forEach(function(id){ $(id).addEventListener('change', function(){ calc(false); }); });
+  document.querySelectorAll('input').forEach(function(el){ el.addEventListener('input', function(){ calc(true); }); });
+  $('go').onclick = function(){ calc(true); };
+  try {
+    const st = JSON.parse(localStorage.getItem('pawprice') || 'null');
+    if (st) {
+      $('species').value = st.species; $('size').value = st.size; $('age').value = st.age;
+      $('fee').value = st.fee; $('med').value = st.med; $('gear').value = st.gear; $('train').value = st.train;
+      $('food').value = st.food; $('litter').value = st.litter; $('ins').value = st.ins; $('groom').value = st.groom; $('vet').value = st.vet;
+      calc(true);
+      return;
+    }
+  } catch(e) {}
+  calc(false);
+})();
+</script>
+</body>
+</html>
